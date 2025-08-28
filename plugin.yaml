@@ -37,7 +37,7 @@ test:
 capabilities:
   - id: inventory.list
     verbs: [list]
-    targets: [switch, stack-member, port]
+    targets: [switch, stack_member, port]
     dry_run: optional
 
   - id: poe.port

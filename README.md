@@ -5,7 +5,7 @@ A lean, REST-first driver that mirrors AOS-S behavior using cookie-session auth,
 
 ## Repository Structure
 
-```
+```text
 com.aruba.aoscx.standalone/
 ├── plugin.yaml          # WalNUT manifest declaring capabilities & schema
 ├── driver.py            # Handles negotiation, HTTP ops, logging, dry-run logic
@@ -14,7 +14,6 @@ com.aruba.aoscx.standalone/
 
 ## What & Why?
 
-You're not just talking to a switch—you're dancing with it.
 
 - **Discover v10.x REST API versions** via `/rest`, pick the newest working one.
 - **Login → operations → mandatory logout** to avoid cookie exhaustion.
@@ -27,6 +26,7 @@ You're not just talking to a switch—you're dancing with it.
 ## Installation & Usage
 
 1. **Drop into your WalNUT plugin directory**:
+
    ```bash
    mv com.aruba.aoscx.standalone /path/to/walnut/plugins/
    ```
@@ -34,10 +34,11 @@ You're not just talking to a switch—you're dancing with it.
 2. **Ensure Python runtime dependencies**:
    - `requests`
    - `python3` (3.8+)
-   
+
    *(Requirements are standard; you might already have them from core.)*
 
 3. **Configure in WalNUT**:
+
    ```yaml
    plugin_id: com.aruba.aoscx.standalone
    config:
@@ -48,6 +49,7 @@ You're not just talking to a switch—you're dancing with it.
    ```
 
 4. **Test the connection**:
+
    ```python
    result = driver.test_connection()
    print(result)
@@ -55,12 +57,14 @@ You're not just talking to a switch—you're dancing with it.
    ```
 
 5. **Dry-run a config save**:
+
    ```python
    result = driver.switch_config("save", target=switch_target, dry_run=True)
    print(result["plan"])
    ```
 
 6. **Execute a real change** (with confirmation flags where required):
+
    ```python
    result = driver.poe_port("set", target=port_target, params={"state":"disable"}, dry_run=False)
    ```
