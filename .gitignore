@@ -1,0 +1,13 @@
+node_modules/
+*.pyc
+__pycache__/
+.env
+.vscode/
+coverage/
+htmlcov/
+*.egg-info/
+dist/
+*.log
+package-lock.json
+package.json
+.claude/
