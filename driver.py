@@ -34,10 +34,12 @@ class AoscxRestDriver:
     """
     Constructor signature is not enforced by WalNUT yet; orchestrator passes config+secrets.
     """
-    def __init__(self, config: Dict[str, Any], secrets: Dict[str, str], logger=None):
+    def __init__(self, config: Dict[str, Any], secrets: Dict[str, str], logger=None, instance: Any = None, **kwargs):
         self.config = dict(config or {})
         self.secrets = dict(secrets or {})
         self.log = logger or self._default_logger()
+        # Orchestrator may pass instance/context; keep a reference if provided
+        self.instance = instance
         self.session = requests.Session()
         self.session.verify = bool(self.config.get("verify_tls", True))
         # Will be set by _negotiate_version()
@@ -86,7 +88,8 @@ class AoscxRestDriver:
         host = self.config["hostname"]
         self._negotiate_version(host)
 
-        if target_type in ("switch", "switches"):
+        # Accept "system" as alias for switch facts
+        if target_type in ("switch", "switches", "system"):
             sys = self._request("GET", "/system", params={"attributes": "platform_name,software_version,serial_number"})
             return [{
                 "type": "switch",
