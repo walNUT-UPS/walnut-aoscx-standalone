@@ -11,4 +11,3 @@ dist/
 package-lock.json
 package.json
 .claude/
-latest.int
