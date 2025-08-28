@@ -1,11 +1,15 @@
 id: com.aruba.aoscx.standalone
 name: AOS-CX (Standalone)
-version: 0.1.0
-min_core_version: "0.10.0"
+version: 0.2.0
+min_core_version: "0.10.1"
 category: network-device
 
 driver:
   entrypoint: driver:AoscxRestDriver  # per GPT.md driver contract
+
+requires:
+  deps:
+    - "requests>=2.31,<3"
 
 schema:
   connection:
