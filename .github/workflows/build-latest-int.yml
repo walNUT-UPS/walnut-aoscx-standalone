@@ -1,0 +1,48 @@
+name: Build latest.int
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'plugin.yaml'
+      - 'driver.py'
+      - 'README.md'
+      - '.github/workflows/build-latest-int.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build-latest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build latest.int
+        run: |
+          set -euo pipefail
+          PLUGIN_ID=$(awk -F': ' '/^id:/{print $2; exit}' plugin.yaml)
+          rm -f latest.int
+          TMPDIR=$(mktemp -d)
+          mkdir -p "$TMPDIR/$PLUGIN_ID"
+          cp -v plugin.yaml driver.py README.md "$TMPDIR/$PLUGIN_ID/" >/dev/null
+          ( cd "$TMPDIR" && zip -qr "$GITHUB_WORKSPACE/latest.int" "$PLUGIN_ID" )
+          rm -rf "$TMPDIR"
+          ls -lah latest.int
+
+      - name: Commit latest.int if changed
+        run: |
+          set -e
+          if git status --porcelain | grep -q '^.M\|?? latest.int'; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add latest.int
+            git commit -m "ci: update latest.int"
+            git push
+          else
+            echo "No changes to latest.int"
+          fi
