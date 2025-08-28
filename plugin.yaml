@@ -1,0 +1,80 @@
+id: com.aruba.aoscx.standalone
+name: AOS-CX (Standalone)
+version: 0.1.0
+min_core_version: "0.10.0"
+category: network-device
+
+driver:
+  entrypoint: driver:AoscxRestDriver  # per GPT.md driver contract
+
+schema:
+  connection:
+    type: object
+    required: [hostname, username, password]
+    properties:
+      hostname: { type: string, title: "Switch hostname or IP" }
+      username: { type: string }
+      password: { type: string, secret: true }
+      verify_tls: { type: boolean, default: true }
+      api_path_hint:
+        type: string
+        enum: ["/rest", "/api"]
+        default: "/rest"
+        title: "Base path hint (REST = API base, API = Swagger UI)"
+
+defaults:
+  heartbeat_interval_s: 120
+  dry_run_refresh_sla_s: 5
+  http:
+    timeout_s: 10
+    retries: 2
+    backoff_ms_start: 250
+    verify_tls: true
+
+test:
+  method: driver  # driver performs version negotiation and a cheap GET
+
+capabilities:
+  - id: inventory.list
+    verbs: [list]
+    targets: [switch, stack-member, port]
+    dry_run: optional
+
+  - id: poe.port
+    verbs: [set]                 # params.state: enable|disable
+    targets: [port]
+    dry_run: required
+    idempotency:
+      key_fields: [verb, target_id, params.state]
+    invertible:
+      set: { inverse: set }      # set(enable) ↔ set(disable)
+
+  - id: poe.priority
+    verbs: [set]                 # params.level: low|normal|high
+    targets: [port]
+    dry_run: required
+    idempotency:
+      key_fields: [verb, target_id, params.level]
+
+  - id: net.interface
+    verbs: [set]                 # params.admin: up|down
+    targets: [port]
+    dry_run: required
+    idempotency:
+      key_fields: [verb, target_id, params.admin]
+    invertible:
+      set: { inverse: set }      # up ↔ down
+
+  - id: switch.config
+    verbs: [save, backup]        # backup returns JSON artifact if supported
+    targets: [switch]
+    dry_run: required            # save mutates; backup is read-only but we keep one shape
+    idempotency:
+      key_fields: [verb, target_id]
+
+  - id: switch.reboot
+    verbs: [exec]                # params.confirm: bool required
+    targets: [switch]
+    dry_run: required
+    idempotency:
+      key_fields: [verb, target_id]
