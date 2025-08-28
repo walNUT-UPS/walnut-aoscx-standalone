@@ -85,11 +85,20 @@ class AoscxRestDriver:
         - stack-member: VSF/VSX members when present
         - port: active ports by default (link up OR PoE delivering)
         """
+        # Normalize target type aliases from orchestrator
+        target_type = (target_type or "").strip().lower().replace(" ", "_")
+        if target_type in ("switches", "system"):
+            target_type = "switch"
+        if target_type in ("stack-member", "stackmember"):
+            target_type = "stack_member"
+        if target_type in ("ports", "interfaces"):
+            target_type = "port"
+
         host = self.config["hostname"]
         self._negotiate_version(host)
 
         # Accept "system" as alias for switch facts
-        if target_type in ("switch", "switches", "system"):
+        if target_type == "switch":
             sys = self._request("GET", "/system", params={"attributes": "platform_name,software_version,serial_number"})
             return [{
                 "type": "switch",
@@ -103,7 +112,7 @@ class AoscxRestDriver:
                 "labels": {}
             }]
 
-        if target_type in ("stack-member", "stack_member"):
+        if target_type == "stack_member":
             # VSX/VSF membership varies by model; probe both resources if present.
             members: List[dict] = []
             try:
@@ -182,11 +191,15 @@ class AoscxRestDriver:
         Enable/disable PoE on a port.
         params: state = "enable"|"disable"
         """
-        state = (params.get("state") or "").lower()
+        # Normalize state: enable/disable, on/off, true/false, 1/0
+        raw_state = params.get("state")
+        if raw_state is None and "enabled" in params:
+            raw_state = params.get("enabled")
+        state = self._normalize_state_enable_disable(raw_state)
         if state not in ("enable", "disable"):
-            return self._validation("state must be enable|disable")
+            return self._validation("state must be enable|disable (accepts on/off/true/false)")
 
-        if_id = target.get("external_id") or target.get("id")
+        if_id = self._target_id(target)
         host = self.config["hostname"]
         self._negotiate_version(host)
 
@@ -222,12 +235,12 @@ class AoscxRestDriver:
         Note: AOS-CX exposes three levels commonly named low/high/critical in CLI; we map:
               normal -> high (middle) for user friendliness per requested capability shape.
         """
-        level = (params.get("level") or "").lower()
+        level = self._normalize_priority(params.get("level"))
         if level not in ("low", "normal", "high"):
-            return self._validation("level must be low|normal|high")
+            return self._validation("level must be low|normal|high (aliases: med/medium=normal)")
         aoscx_level = {"low": "low", "normal": "high", "high": "critical"}.get(level, level)
 
-        if_id = target.get("external_id") or target.get("id")
+        if_id = self._target_id(target)
         host = self.config["hostname"]
         self._negotiate_version(host)
 
@@ -260,12 +273,13 @@ class AoscxRestDriver:
         Shutdown / no-shutdown
         params: admin = "up"|"down"
         """
-        admin = (params.get("admin") or "").lower()
+        # Accept a wider set of inputs: admin/state/up/down/enable/disable/shutdown/no-shutdown/true/false
+        admin = self._normalize_admin(params)
         if admin not in ("up", "down"):
             self.log.warning("phase=net.interface event=validation_error reason=bad_admin_value value=%s", admin)
-            return self._validation("admin must be up|down")
+            return self._validation("admin must be up|down (aliases: enable/disable, shutdown/no-shutdown)")
 
-        if_id = target.get("external_id") or target.get("id")
+        if_id = self._target_id(target)
         host = self.config["hostname"]
         self._negotiate_version(host)
 
@@ -344,7 +358,10 @@ class AoscxRestDriver:
         Simple reboot (no image selection). Many CX builds expose /system/reboot.
         """
         confirm = params.get("confirm")
-        if confirm is not True:
+        # Accept alternate keys and truthy strings
+        if confirm is None:
+            confirm = params.get("force") or params.get("yes") or params.get("ack")
+        if not self._is_truthy(confirm):
             self.log.warning("phase=switch.reboot event=validation_error reason=confirm_required")
             return self._validation("confirm=true required")
 
@@ -464,6 +481,71 @@ class AoscxRestDriver:
         if isinstance(data, dict):
             return data
         return {}
+
+    @staticmethod
+    def _target_id(target: dict) -> str:
+        if not isinstance(target, dict):
+            return str(target)
+        for k in ("external_id", "id", "name", "port", "port_id", "interface", "if_id"):
+            v = target.get(k)
+            if v:
+                return str(v)
+        return ""
+
+    @staticmethod
+    def _is_truthy(x: Any) -> bool:
+        if isinstance(x, bool):
+            return x
+        if x is None:
+            return False
+        s = str(x).strip().lower()
+        return s in ("1", "true", "yes", "y", "on", "enable", "enabled")
+
+    @staticmethod
+    def _normalize_state_enable_disable(x: Any) -> str:
+        if isinstance(x, bool):
+            return "enable" if x else "disable"
+        s = str(x or "").strip().lower()
+        if s in ("1", "true", "yes", "y", "on", "enable", "enabled"):
+            return "enable"
+        if s in ("0", "false", "no", "n", "off", "disable", "disabled"):
+            return "disable"
+        return s
+
+    @staticmethod
+    def _normalize_priority(x: Any) -> str:
+        s = str(x or "").strip().lower()
+        if s in ("med", "medium", "mid"):
+            return "normal"
+        if s in ("crit", "critical"):
+            return "high"
+        if s in ("0",):
+            return "low"
+        if s in ("1",):
+            return "normal"
+        if s in ("2",):
+            return "high"
+        return s
+
+    @staticmethod
+    def _normalize_admin(params: dict) -> str:
+        # Prefer explicit admin, else look for common synonyms
+        v = params.get("admin")
+        if v is None:
+            v = params.get("state")
+        if v is None and "shutdown" in params:
+            # shutdown True => down
+            return "down" if AoscxRestDriver._is_truthy(params.get("shutdown")) else "up"
+        s = str(v or "").strip().lower()
+        if s in ("up", "enable", "enabled", "no-shutdown", "no_shutdown"):
+            return "up"
+        if s in ("down", "disable", "disabled", "shutdown"):
+            return "down"
+        if s in ("1", "true", "yes", "on"):
+            return "up"
+        if s in ("0", "false", "no", "off"):
+            return "down"
+        return s
 
     def _build_poe_patch(self, before: dict, state: str) -> Tuple[dict, str]:
         """
