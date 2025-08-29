@@ -11,3 +11,6 @@ dist/
 package-lock.json
 package.json
 .claude/
+
+
+loader.py

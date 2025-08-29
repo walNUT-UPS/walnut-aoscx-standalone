@@ -82,3 +82,13 @@ capabilities:
     dry_run: required
     idempotency:
       key_fields: [verb, target_id]
+
+  - id: power.monitoring
+    verbs: [get]                 # get power data for ports or system
+    targets: [port, switch]
+    dry_run: optional
+
+  - id: lldp.neighbors
+    verbs: [get]                 # get LLDP neighbor information
+    targets: [port, switch]
+    dry_run: optional
