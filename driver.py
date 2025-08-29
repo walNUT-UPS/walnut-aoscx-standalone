@@ -33,15 +33,48 @@ from time import perf_counter_ns  # monotonic timer for accurate durations (ns)
 
 class AoscxRestDriver:
     """
-    Constructor signature is not enforced by WalNUT yet; orchestrator passes config+secrets.
+    Compatible constructor for different WalNUT driver invocation styles.
+
+    Supports:
+    - __init__(config, secrets, logger=None, instance=None, **kwargs)
+    - __init__(instance, secrets, logger=None, **kwargs) where instance.config holds values
+    - Keyword forms: config=..., secrets=..., instance=..., logger=...
+
+    Notes:
+    - If password is present in config and secrets is empty, it will be copied to secrets.
+    - Additional kwargs are accepted for forward compatibility and ignored here.
     """
-    def __init__(self, instance, secrets: Dict[str, str], logger=None, **kwargs):
-        """Initialize AoscxRestDriver with walNUT framework compatibility"""
-        
-        # Extract config from instance (walNUT framework pattern)
-        self.config = instance.config if hasattr(instance, 'config') else {}
-        self.secrets = secrets or {}
-        self.instance = instance
+    def __init__(self, config=None, secrets: Optional[Dict[str, str]] = None, logger=None, instance=None, **kwargs):
+        """Initialize AoscxRestDriver with WalNUT framework compatibility"""
+
+        # Normalize inputs across invocation styles
+        inferred_instance = None
+        inferred_config: Dict[str, Any] = {}
+        inferred_secrets: Dict[str, Any] = {}
+
+        # Case 1: First positional is an instance-like object
+        if config is not None and not isinstance(config, dict) and hasattr(config, 'config'):
+            inferred_instance = config
+            inferred_config = getattr(config, 'config', {}) or {}
+            # Some frameworks may place secrets on instance
+            if hasattr(config, 'secrets') and isinstance(config.secrets, dict):
+                inferred_secrets = config.secrets
+            # Shift positional args: the second positional is actually secrets
+            inferred_secrets = secrets or inferred_secrets or {}
+        else:
+            # Case 2: Standard form with config dict provided
+            inferred_instance = instance
+            inferred_config = config or {}
+            inferred_secrets = secrets or {}
+
+        # If password got placed in config, lift it into secrets when missing
+        if 'password' in inferred_config and 'password' not in inferred_secrets:
+            inferred_secrets['password'] = inferred_config.get('password')
+
+        # Store resolved attributes
+        self.instance = inferred_instance
+        self.config = inferred_config
+        self.secrets = inferred_secrets
 
         # Validate required configuration fields
         required_config = ['hostname', 'username']
